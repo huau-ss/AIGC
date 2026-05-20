@@ -33,7 +33,7 @@ const PROD_WEB_DIR = join(__dirname, '../web');
 await fastify.register(fastifyStatic, {
   root: LOCAL_WEB_DIR,
   prefix: '/src/web/',
-  decorateReply: false,
+  decorateReply: true,
 });
 
 // 根路径返回 index.html
