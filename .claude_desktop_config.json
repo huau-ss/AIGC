@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "academic-rewrite": {
+      "command": "node",
+      "args": ["dist/mcp/server.js"],
+      "cwd": "/Users/jianghoufen/AIGC",
+      "env": {
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}
