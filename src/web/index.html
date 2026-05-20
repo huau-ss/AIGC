@@ -685,6 +685,7 @@
     let batchTexts = [];
     let currentResult = '';
     let history = JSON.parse(localStorage.getItem('rewriteHistory') || '[]');
+    let isUploading = false;
 
     // Tab switching
     document.querySelectorAll('.tab-item').forEach(btn => {
@@ -737,6 +738,7 @@
       document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
       filePreview.classList.add('show');
 
+      isUploading = true;
       const formData = new FormData();
       formData.append('file', file);
 
@@ -754,6 +756,8 @@
         }
       } catch (error) {
         showToast('网络错误');
+      } finally {
+        isUploading = false;
       }
     }
 
@@ -776,6 +780,11 @@
 
     // Rewrite
     document.getElementById('rewriteBtn').addEventListener('click', async () => {
+      if (isUploading) {
+        showToast('文档正在上传中，请稍候...');
+        return;
+      }
+
       const text = document.getElementById('inputText').value.trim();
       if (!text) {
         showToast('请输入或上传文本');
@@ -802,7 +811,6 @@
           document.getElementById('resultText').textContent = result.rewritten;
           document.getElementById('resultMeta').innerHTML = `
             <span class="meta-tag">${currentLevel === 'light' ? '轻度' : currentLevel === 'medium' ? '中度' : '深度'}改写</span>
-            <span class="meta-tag">${result.model}</span>
           `;
           document.getElementById('resultArea').classList.add('show');
 

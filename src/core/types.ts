@@ -28,6 +28,7 @@ export interface RewriteResponse {
   success: boolean;
   data?: RewriteResult;
   error?: string;
+  cached?: boolean;
 }
 
 export interface RewriteRequest {

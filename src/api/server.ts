@@ -8,6 +8,7 @@ import type { RewriteRequest, RewriteResponse, HealthCheckResponse, RewriteResul
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import mammoth from 'mammoth';
+import crypto from 'crypto';
 import 'dotenv/config';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,6 +19,31 @@ const fastify = Fastify({
 });
 
 const startTime = Date.now();
+
+// 请求去重缓存
+interface CacheEntry {
+  result: RewriteResult;
+  timestamp: number;
+}
+
+const rewriteCache = new Map<string, CacheEntry>();
+const CACHE_TTL = 60 * 1000; // 60 秒缓存
+
+// 清理过期缓存
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rewriteCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL) {
+      rewriteCache.delete(key);
+    }
+  }
+}, 30 * 1000);
+
+// 生成文本 hash
+function generateHash(text: string, level: string, preserveTerms: string[]): string {
+  const data = JSON.stringify({ text, level, preserveTerms: preserveTerms.sort() });
+  return crypto.createHash('sha256').update(data).digest('hex').slice(0, 16);
+}
 
 await fastify.register(cors, {
   origin: true,
@@ -97,12 +123,33 @@ fastify.post<{ Body: RewriteRequest }>(
       };
     }
 
+    const effectiveLevel = level || 'medium';
+    const effectiveTerms = preserveTerms || [];
+
+    // 检查缓存
+    const cacheKey = generateHash(text, effectiveLevel, effectiveTerms);
+    const cached = rewriteCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      fastify.log.info({ cacheKey }, 'Returning cached rewrite result');
+      return {
+        success: true,
+        data: cached.result,
+        cached: true,
+      };
+    }
+
     try {
       const result = await rewrite(text, {
-        level: level || 'medium',
-        preserveTerms: preserveTerms || [],
+        level: effectiveLevel,
+        preserveTerms: effectiveTerms,
         domain,
         preserveCitation,
+      });
+
+      // 存入缓存
+      rewriteCache.set(cacheKey, {
+        result,
+        timestamp: Date.now(),
       });
 
       return {
@@ -171,13 +218,29 @@ fastify.post<{ Body: { texts: string[]; level?: string } }>(
     }
 
     try {
-      const results = await Promise.all(
-        texts.map((text) =>
-          rewrite(text, {
+      // 对每个文本进行去重检查和改写
+      const results: RewriteResult[] = [];
+
+      for (const text of texts) {
+        const cacheKey = generateHash(text, level, []);
+        const cached = rewriteCache.get(cacheKey);
+
+        if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+          fastify.log.info({ cacheKey }, 'Returning cached result for batch item');
+          results.push(cached.result);
+        } else {
+          const result = await rewrite(text, {
             level: level as RewriteLevel,
-          })
-        )
-      );
+          });
+
+          rewriteCache.set(cacheKey, {
+            result,
+            timestamp: Date.now(),
+          });
+
+          results.push(result);
+        }
+      }
 
       return {
         success: true,
