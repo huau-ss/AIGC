@@ -57,11 +57,22 @@ await fastify.register(fastifyStatic, {
   root: WEB_DIR,
   prefix: '/',
   decorateReply: true,
+  index: false, // 禁用自动返回 index.html，由自定义路由处理
 });
 
-// 根路径返回 index.html
+// 根路径返回 index.html (注入 API URL)
 fastify.get('/', async (request, reply) => {
-  return reply.sendFile('index.html');
+  const fs = await import('fs');
+  const path = await import('path');
+  const htmlPath = path.join(WEB_DIR, 'index.html');
+  let html = fs.readFileSync(htmlPath, 'utf-8');
+  
+  // 注入 API URL 到前端
+  const apiUrl = process.env.ENV_API_URL || '';
+  html = html.replace('window.ENV_API_URL = undefined;', `window.ENV_API_URL = ${apiUrl ? `'${apiUrl}'` : 'undefined'};`);
+  
+  reply.header('Content-Type', 'text/html');
+  return html;
 });
 
 await fastify.register(fastifyMultipart, {

@@ -676,7 +676,8 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    // API 配置
+    // API 配置 (服务器会注入 ENV_API_URL)
+    window.ENV_API_URL = undefined;
     const API_BASE = window.ENV_API_URL || '';
 
     // State
