@@ -20,7 +20,9 @@ const fastify = Fastify({
 
 const startTime = Date.now();
 
-// 请求去重缓存
+// HTML 缓存（启动时加载）
+let indexHtmlCache: string;
+
 interface CacheEntry {
   result: RewriteResult;
   timestamp: number;
@@ -60,19 +62,30 @@ await fastify.register(fastifyStatic, {
   index: false, // 禁用自动返回 index.html，由自定义路由处理
 });
 
-// 根路径返回 index.html (注入 API URL)
-fastify.get('/', async (request, reply) => {
+// 初始化 HTML 缓存（启动时执行一次）
+async function initHtmlCache(): Promise<void> {
   const fs = await import('fs');
-  const path = await import('path');
-  const htmlPath = path.join(WEB_DIR, 'index.html');
+  const fsPromise = await import('fs/promises');
+  const htmlPath = join(WEB_DIR, 'index.html');
+  
+  // 同步读取一次，然后缓存
   let html = fs.readFileSync(htmlPath, 'utf-8');
   
-  // 注入 API URL 到前端
+  // 注入 API URL
   const apiUrl = process.env.ENV_API_URL || '';
-  html = html.replace('window.ENV_API_URL = undefined;', `window.ENV_API_URL = ${apiUrl ? `'${apiUrl}'` : 'undefined'};`);
+  html = html.replace(
+    'window.ENV_API_URL = undefined;',
+    `window.ENV_API_URL = ${apiUrl ? `'${apiUrl}'` : 'undefined'};`
+  );
   
+  indexHtmlCache = html;
+  console.log('[Init] HTML cache loaded');
+}
+
+// 根路径返回缓存的 index.html
+fastify.get('/', async (request, reply) => {
   reply.header('Content-Type', 'text/html');
-  return html;
+  return indexHtmlCache;
 });
 
 await fastify.register(fastifyMultipart, {
@@ -269,6 +282,9 @@ fastify.post<{ Body: { texts: string[]; level?: string } }>(
 
 const start = async () => {
   try {
+    // 初始化 HTML 缓存
+    await initHtmlCache();
+    
     const port = parseInt(process.env.PORT || '3000');
     const host = process.env.HOST || '0.0.0.0';
 
