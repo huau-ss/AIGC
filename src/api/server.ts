@@ -24,22 +24,18 @@ await fastify.register(cors, {
   methods: ['GET', 'POST', 'OPTIONS'],
 });
 
-// 前端静态文件（本地开发）
-const LOCAL_WEB_DIR = join(__dirname, '../../src/web');
-
-// 生产环境前端静态文件
-const PROD_WEB_DIR = join(__dirname, '../web');
+// 前端静态文件目录
+const WEB_DIR = join(__dirname, '../../src/web');
 
 await fastify.register(fastifyStatic, {
-  root: LOCAL_WEB_DIR,
-  prefix: '/src/web/',
+  root: WEB_DIR,
+  prefix: '/',
   decorateReply: true,
 });
 
 // 根路径返回 index.html
 fastify.get('/', async (request, reply) => {
-  const indexPath = join(LOCAL_WEB_DIR, 'index.html');
-  return reply.sendFile('index.html', indexPath);
+  return reply.sendFile('index.html');
 });
 
 await fastify.register(fastifyMultipart, {
