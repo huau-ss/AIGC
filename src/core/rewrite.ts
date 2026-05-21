@@ -257,7 +257,18 @@ export async function rewrite(
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const deepseekKey = process.env.DEEPSEEK_API_KEY;
 
-  if (needsSplit) {
+    if (!anthropicKey || anthropicKey === 'your_anthropic_api_key_here') {
+      anthropicKey = undefined;
+    }
+    if (!deepseekKey || deepseekKey === 'your_deepseek_api_key_here') {
+      deepseekKey = undefined;
+    }
+
+    if (!anthropicKey && !deepseekKey) {
+      throw new Error('No AI API key configured. Please set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY in Railway environment variables.');
+    }
+
+    if (needsSplit) {
     console.log(`[Rewrite] 长文本检测 (${text.length} 字符)，开始智能分段...`);
     const segments = smartSplit(text, MAX_CHARS_PER_SEGMENT);
     console.log(`[Rewrite] 分为 ${segments.length} 段进行处理`);
@@ -287,7 +298,7 @@ export async function rewrite(
       let success = false;
 
       // 尝试多模型
-      if (anthropicKey && anthropicKey !== 'your_anthropic_api_key_here') {
+      if (anthropicKey) {
         try {
           segmentResult = await rewriteSingleSegment(
             segments[i],
@@ -302,7 +313,7 @@ export async function rewrite(
         }
       }
 
-      if (!success && deepseekKey && deepseekKey !== 'your_deepseek_api_key_here') {
+      if (!success && deepseekKey) {
         try {
           segmentResult = await rewriteSingleSegment(
             segments[i],
@@ -317,10 +328,6 @@ export async function rewrite(
         }
       }
 
-      if (!success) {
-        throw new Error('No AI API key configured');
-      }
-
       rewrittenSegments.push(segmentResult);
     }
 
@@ -329,7 +336,7 @@ export async function rewrite(
     // 短文本直接改写
     const userMessage = text + preserveContext;
 
-    if (anthropicKey && anthropicKey !== 'your_anthropic_api_key_here') {
+    if (anthropicKey) {
       try {
         const messages = [
           { role: 'system', content: strategy.system },
@@ -340,7 +347,7 @@ export async function rewrite(
         console.log('[Rewrite] 使用 Claude');
       } catch (claudeError) {
         console.log('[Rewrite] Claude 失败，尝试 DeepSeek');
-        if (deepseekKey && deepseekKey !== 'your_deepseek_api_key_here') {
+        if (deepseekKey) {
           rewrittenText = await callDeepSeek(
             [
               { role: 'system', content: strategy.system },
@@ -351,10 +358,10 @@ export async function rewrite(
           modelUsed = 'deepseek-chat';
           console.log('[Rewrite] 使用 DeepSeek');
         } else {
-          throw claudeError;
+          throw new Error('Claude request failed and no DEEPSEEK_API_KEY configured');
         }
       }
-    } else if (deepseekKey && deepseekKey !== 'your_deepseek_api_key_here') {
+    } else if (deepseekKey) {
       rewrittenText = await callDeepSeek(
         [
           { role: 'system', content: strategy.system },
