@@ -7,8 +7,11 @@ RUN npm ci
 
 COPY . .
 
-# 复制前端文件到 dist/web（确保前端文件在构建输出中）
-RUN mkdir -p dist && cp -r src/web dist/
+# 编译 TypeScript
+RUN npm run build
+
+# 复制前端文件到 dist/web
+RUN cp -r src/web dist/
 
 EXPOSE ${PORT:-3000}
 
