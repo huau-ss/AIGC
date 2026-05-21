@@ -52,8 +52,8 @@ await fastify.register(cors, {
   methods: ['GET', 'POST', 'OPTIONS'],
 });
 
-// 前端静态文件目录
-const WEB_DIR = join(__dirname, '../../src/web');
+// 前端静态文件目录（Docker 构建后路径）
+const WEB_DIR = join(__dirname, '../web');
 
 await fastify.register(fastifyStatic, {
   root: WEB_DIR,
