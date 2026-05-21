@@ -6,11 +6,10 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
 
-# 复制前端文件到 dist/web
-COPY src/web dist/web
+# 复制前端文件到 dist/web（确保前端文件在构建输出中）
+RUN mkdir -p dist && cp -r src/web dist/
 
-EXPOSE 3000
+EXPOSE ${PORT:-3000}
 
 CMD ["node", "dist/api/server.js"]
