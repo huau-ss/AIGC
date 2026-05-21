@@ -282,10 +282,13 @@ fastify.post<{ Body: { texts: string[]; level?: string } }>(
 
 const start = async () => {
   try {
+    // 等待其他服务初始化
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     // 初始化 HTML 缓存
     await initHtmlCache();
-    
-    const port = parseInt(process.env.PORT || '3000');
+
+    const port = parseInt(process.env.PORT || '8080');
     const host = process.env.HOST || '0.0.0.0';
 
     await fastify.listen({ port, host });

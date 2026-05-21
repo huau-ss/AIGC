@@ -254,21 +254,21 @@ export async function rewrite(
     ? `\n\n必须保留的专业术语：${preserveTerms.join(', ')}`
     : '';
 
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const deepseekKey = process.env.DEEPSEEK_API_KEY;
+  let anthropicKey = process.env.ANTHROPIC_API_KEY;
+  let deepseekKey = process.env.DEEPSEEK_API_KEY;
 
-    if (!anthropicKey || anthropicKey === 'your_anthropic_api_key_here') {
-      anthropicKey = undefined;
-    }
-    if (!deepseekKey || deepseekKey === 'your_deepseek_api_key_here') {
-      deepseekKey = undefined;
-    }
+  if (!anthropicKey || anthropicKey === 'your_anthropic_api_key_here') {
+    anthropicKey = undefined;
+  }
+  if (!deepseekKey || deepseekKey === 'your_deepseek_api_key_here') {
+    deepseekKey = undefined;
+  }
 
-    if (!anthropicKey && !deepseekKey) {
-      throw new Error('No AI API key configured. Please set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY in Railway environment variables.');
-    }
+  if (!anthropicKey && !deepseekKey) {
+    throw new Error('No AI API key configured. Please set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY in Railway environment variables.');
+  }
 
-    if (needsSplit) {
+  if (needsSplit) {
     console.log(`[Rewrite] 长文本检测 (${text.length} 字符)，开始智能分段...`);
     const segments = smartSplit(text, MAX_CHARS_PER_SEGMENT);
     console.log(`[Rewrite] 分为 ${segments.length} 段进行处理`);
