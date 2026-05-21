@@ -72,13 +72,11 @@ export const STRATEGIES: Record<RewriteStrategy, { system: string; maxTokens: nu
 
 // 智能文本分段 - 按段落和句子边界分段
 function smartSplit(text: string, maxChars: number = 3000): string[] {
-  // 先按段落分割
   const paragraphs = text.split(/\n+/).filter(p => p.trim());
   const segments: string[] = [];
   let currentSegment = '';
 
   for (const paragraph of paragraphs) {
-    // 如果单个段落就超过限制，按句子分割
     if (paragraph.length > maxChars) {
       const sentences = paragraph.match(/[^.!?。！？]+[.!?。！？]+/g) || [paragraph];
       let tempSegment = '';
@@ -113,57 +111,10 @@ function smartSplit(text: string, maxChars: number = 3000): string[] {
   return segments;
 }
 
-async function callClaude(
-  messages: { role: string; content: string }[],
-  maxTokens: number,
-  timeout = 120000 // 120 秒超时
-): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not configured');
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-        max_tokens: maxTokens,
-        messages,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Claude API error: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json() as { content: Array<{ type: string; text: string }> };
-    return data.content[0]?.text?.trim() || '';
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Claude API request timeout');
-    }
-    throw error;
-  }
-}
-
 async function callDeepSeek(
   messages: { role: string; content: string }[],
   maxTokens: number,
-  timeout = 60000 // 60 秒超时
+  timeout = 60000
 ): Promise<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -181,7 +132,7 @@ async function callDeepSeek(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
         max_tokens: maxTokens,
         messages,
       }),
@@ -209,17 +160,14 @@ async function callDeepSeek(
 // 单段改写
 async function rewriteSingleSegment(
   segment: string,
-  context: { previousSegment?: string; nextSegmentHint?: string; segmentIndex: number; totalSegments: number },
-  strategy: { system: string; maxTokens: number },
-  apiCall: (messages: { role: string; content: string }[], maxTokens: number) => Promise<string>
+  context: { previousSegment?: string; segmentIndex: number; totalSegments: number },
+  strategy: { system: string; maxTokens: number }
 ): Promise<string> {
   let userMessage = '';
 
   if (context.segmentIndex === 0) {
-    // 第一段：提供文档概览提示
     userMessage = `这是学术论文的开头部分，请保持自然开头风格。\n\n${segment}`;
   } else {
-    // 中间段：提供上文衔接提示
     const previousHint = context.previousSegment
       ? `前文内容摘要：${context.previousSegment.slice(-200)}...`
       : '';
@@ -231,42 +179,27 @@ async function rewriteSingleSegment(
     { role: 'user', content: userMessage },
   ];
 
-  return apiCall(messages, strategy.maxTokens);
+  return callDeepSeek(messages, strategy.maxTokens);
 }
 
 export async function rewrite(
   text: string,
   options: RewriteOptions
 ): Promise<RewriteResult> {
-  const { level = 'medium', preserveTerms = [], domain } = options;
+  const { level = 'medium', preserveTerms = [] } = options;
 
   const strategy = STRATEGIES[level];
 
-  // 检查文本长度，决定是否分段
   const MAX_CHARS_PER_SEGMENT = 3000;
   const needsSplit = text.length > MAX_CHARS_PER_SEGMENT;
 
-  let rewrittenText = '';
-  let modelUsed = '';
-
-  // 构建保留术语上下文
   const preserveContext = preserveTerms.length > 0
     ? `\n\n必须保留的专业术语：${preserveTerms.join(', ')}`
     : '';
 
-  let anthropicKey = process.env.ANTHROPIC_API_KEY;
-  let deepseekKey = process.env.DEEPSEEK_API_KEY;
+  const modelUsed = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 
-  if (!anthropicKey || anthropicKey === 'your_anthropic_api_key_here') {
-    anthropicKey = undefined;
-  }
-  if (!deepseekKey || deepseekKey === 'your_deepseek_api_key_here') {
-    deepseekKey = undefined;
-  }
-
-  if (!anthropicKey && !deepseekKey) {
-    throw new Error('No AI API key configured. Please set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY in Railway environment variables.');
-  }
+  let rewrittenText = '';
 
   if (needsSplit) {
     console.log(`[Rewrite] 长文本检测 (${text.length} 字符)，开始智能分段...`);
@@ -275,7 +208,6 @@ export async function rewrite(
 
     const rewrittenSegments: string[] = [];
 
-    // 逐段改写，保持上下文
     for (let i = 0; i < segments.length; i++) {
       console.log(`[Rewrite] 处理第 ${i + 1}/${segments.length} 段...`);
 
@@ -286,7 +218,6 @@ export async function rewrite(
       };
 
       let segmentStrategy = strategy;
-      // 为最后一段添加术语保留提示
       if (i === segments.length - 1 && preserveContext) {
         segmentStrategy = {
           ...strategy,
@@ -294,86 +225,19 @@ export async function rewrite(
         };
       }
 
-      let segmentResult = '';
-      let success = false;
-
-      // 尝试多模型
-      if (anthropicKey) {
-        try {
-          segmentResult = await rewriteSingleSegment(
-            segments[i],
-            context,
-            segmentStrategy,
-            callClaude
-          );
-          modelUsed = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-          success = true;
-        } catch (e) {
-          console.log('[Rewrite] Claude 失败，尝试 DeepSeek');
-        }
-      }
-
-      if (!success && deepseekKey) {
-        try {
-          segmentResult = await rewriteSingleSegment(
-            segments[i],
-            context,
-            segmentStrategy,
-            callDeepSeek
-          );
-          modelUsed = 'deepseek-chat';
-          success = true;
-        } catch (e) {
-          throw e;
-        }
-      }
-
+      const segmentResult = await rewriteSingleSegment(segments[i], context, segmentStrategy);
       rewrittenSegments.push(segmentResult);
     }
 
     rewrittenText = rewrittenSegments.join('\n\n');
   } else {
-    // 短文本直接改写
     const userMessage = text + preserveContext;
-
-    if (anthropicKey) {
-      try {
-        const messages = [
-          { role: 'system', content: strategy.system },
-          { role: 'user', content: userMessage },
-        ];
-        rewrittenText = await callClaude(messages, strategy.maxTokens);
-        modelUsed = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
-        console.log('[Rewrite] 使用 Claude');
-      } catch (claudeError) {
-        console.log('[Rewrite] Claude 失败，尝试 DeepSeek');
-        if (deepseekKey) {
-          rewrittenText = await callDeepSeek(
-            [
-              { role: 'system', content: strategy.system },
-              { role: 'user', content: userMessage },
-            ],
-            strategy.maxTokens
-          );
-          modelUsed = 'deepseek-chat';
-          console.log('[Rewrite] 使用 DeepSeek');
-        } else {
-          throw new Error('Claude request failed and no DEEPSEEK_API_KEY configured');
-        }
-      }
-    } else if (deepseekKey) {
-      rewrittenText = await callDeepSeek(
-        [
-          { role: 'system', content: strategy.system },
-          { role: 'user', content: userMessage },
-        ],
-        strategy.maxTokens
-      );
-      modelUsed = 'deepseek-chat';
-      console.log('[Rewrite] 使用 DeepSeek');
-    } else {
-      throw new Error('No AI API key configured');
-    }
+    const messages = [
+      { role: 'system', content: strategy.system },
+      { role: 'user', content: userMessage },
+    ];
+    rewrittenText = await callDeepSeek(messages, strategy.maxTokens);
+    console.log('[Rewrite] 使用 DeepSeek');
   }
 
   const changes: string[] = [];
